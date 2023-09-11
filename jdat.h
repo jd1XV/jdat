@@ -5,6 +5,8 @@
 #include <jd_lib.h>
 
 #define jdat_ElementByArg(type, val) (PacketElementData){ .type = val }
+#define jdat_ForEachElement(identifier, header) for (u64 identifier = 0; identifier < header->num_elements; identifier++)
+#define jdat_ForEachHeader(identifier, packet) for (PacketHeader* identifier = packet->head; identifier != NULL && identifier != packet->last->next; identifier = identifier->next)
 
 #define HEADER_MESSAGE_SIZE KILOBYTES(1)
 
