@@ -273,7 +273,7 @@ jdat_Packet* PacketParse(jd_Arena* arena, jd_StrA packet_string) {
             if (required_char == '=' || 
                 required_char == ':' ||
                 required_char == ';') {
-                PacketSetError(packet, PACKET_INCOMPLETE_HEADER, required_char, index); break;
+                PacketSetError(packet, PACKET_INCOMPLETE_ELEMENT, required_char, index); break;
             }
         }
         
