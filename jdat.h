@@ -10,27 +10,6 @@
 
 #define HEADER_MESSAGE_SIZE KILOBYTES(1)
 
-typedef enum CommandStatus {
-    COMMAND_STATUS_INPROGRESS,
-    COMMAND_STATUS_FAILED,
-    COMMAND_STATUS_SUCCEEDED,
-    COMMAND_STATUS_COUNT
-} CommandStatus;
-
-typedef enum CommandCode {
-    COMMAND_SEARCH,
-    COMMAND_INSPECT,
-    COMMAND_DOWNLOAD,
-    COMMAND_CODE_COUNT
-} CommandCode;
-
-typedef struct Command {
-    u32 command_code;
-    u32 command_flags;
-    jd_StrA command_string;
-    CommandStatus status;
-} Command;
-
 typedef enum PacketElementValueType {
     PACKET_ELEMENT_VALUE_TYPE_NULL,
     PACKET_ELEMENT_VALUE_TYPE_U64,
