@@ -139,6 +139,7 @@ PacketElement* PacketElementPushBackByArg(PacketHeader* header, jd_StrA key, Pac
     return out_element;
 }
 
+
 PacketElement* PacketElementPushBackU64(PacketHeader* header, jd_StrA key, u64 val) {
     PacketElement element = {
         .key = key,
@@ -146,8 +147,20 @@ PacketElement* PacketElementPushBackU64(PacketHeader* header, jd_StrA key, u64 v
         .data.U64 = val
     };
     
-    PacketElement* out_element = PacketElementPushBack(header, &element);
-    return out_element;
+    PacketElement* out = PacketElementPushBack(header, &element);
+    return out;
+}
+
+
+PacketElement* PacketElementPushBackString(PacketHeader* header, jd_StrA key, jd_StrA val) {
+    PacketElement element = {
+        .key = key,
+        .value_type = PACKET_ELEMENT_VALUE_TYPE_STRING,
+        .data.str = jd_StrDup(header->arena, val),
+    };
+    
+    PacketElement* out = PacketElementPushBack(header, &element);
+    return out;
 }
 
 PacketHeader* PacketGetFirstHeaderWithTag(jdat_Packet* packet, jd_StrA tag) {

@@ -78,6 +78,7 @@ PacketHeader* PacketHeaderPushBack(jdat_Packet* packet, jd_StrA tag);
 PacketElement* PacketElementPushBack(PacketHeader* header, PacketElement* in_element);
 PacketElement* PacketElementPushBackInPlace(PacketHeader* header, PacketElement* in_element);
 PacketElement* PacketElementPushBackByArg(PacketHeader* header, jd_StrA key, PacketElementValueType type, PacketElementData data);
+PacketElement* PacketElementPushBackString(PacketHeader* header, jd_StrA key, jd_StrA val);
 void PacketSetError(jdat_Packet* packet, PacketErrorCode code, c8 missing_char, u32 error_index);
 jdat_Packet* PacketParse(jd_Arena* arena, jd_StrA packet_string);
 jd_StrA PacketToString(jd_Arena* arena, jdat_Packet* packet, jd_ArenaStr* arena_str);
@@ -108,6 +109,5 @@ typedef struct jd_StrACompressed {
 jd_StrACompressed StringCompress(jd_Arena* arena, jd_StrA src);
 jd_StrA StringDecompress(jd_Arena* arena, jd_StrACompressed src);
 u64 StringCalcCompressedLength(u64 count);
-
 
 #endif // JDAT_DEFS_H
