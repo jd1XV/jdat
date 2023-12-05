@@ -152,6 +152,18 @@ PacketElement* PacketElementPushBackU64(PacketHeader* header, jd_StrA key, u64 v
 }
 
 
+PacketElement* PacketElementPushBackU32(PacketHeader* header, jd_StrA key, u32 val) {
+    PacketElement element = {
+        .key = key,
+        .value_type = PACKET_ELEMENT_VALUE_TYPE_U64,
+        .data.U32 = val
+    };
+    
+    PacketElement* out = PacketElementPushBack(header, &element);
+    return out;
+}
+
+
 PacketElement* PacketElementPushBackString(PacketHeader* header, jd_StrA key, jd_StrA val) {
     PacketElement element = {
         .key = key,
