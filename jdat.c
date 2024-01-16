@@ -634,47 +634,56 @@ PacketHeader* PacketHeaderCopy(jd_Arena* arena, PacketHeader* src) {
 }
 
 u64 PacketElementGetU64(PacketElement* packet_element) {
+    if (!packet_element) return 0;
     if (packet_element->value_type != PACKET_ELEMENT_VALUE_TYPE_U64) return 0;
     return packet_element->data.U64;
 }
 
 u32 PacketElementGetU32(PacketElement* packet_element) {
+    if (!packet_element) return 0;
     if (packet_element->value_type != PACKET_ELEMENT_VALUE_TYPE_U32) return 0;
     return packet_element->data.U32;
 }
 
 s64 PacketElementGetS64(PacketElement* packet_element) {
+    if (!packet_element) return 0;
     if (packet_element->value_type != PACKET_ELEMENT_VALUE_TYPE_S64) return 0;
     return packet_element->data.S64;
 }
 
 s32 PacketElementGetS32(PacketElement* packet_element) {
+    if (!packet_element) return 0;
     if (packet_element->value_type != PACKET_ELEMENT_VALUE_TYPE_S32) return 0;
     return packet_element->data.S32;
 }
 
 f64 PacketElementGetF64(PacketElement* packet_element) {
+    if (!packet_element) return 0.0f;
     if (packet_element->value_type != PACKET_ELEMENT_VALUE_TYPE_F64) return 0;
     return packet_element->data.F64;
 }
 
 f32 PacketElementGetF32(PacketElement* packet_element) {
+    if (!packet_element) return 0.0f;
     if (packet_element->value_type != PACKET_ELEMENT_VALUE_TYPE_F32) return 0.0f;
     return packet_element->data.F32;
 }
 
 b32 PacketElementGetB32(PacketElement* packet_element) {
+    if (!packet_element) return false;
     if (packet_element->value_type != PACKET_ELEMENT_VALUE_TYPE_B32) return false;
     return packet_element->data.B32;
 }
 
 c8 PacketElementGetC8(PacketElement* packet_element) {
+    if (!packet_element) return 0;
     if (packet_element->value_type != PACKET_ELEMENT_VALUE_TYPE_C8) return 0;
     return packet_element->data.C8;
 }
 
 jd_StrA PacketElementGetString(PacketElement* packet_element) {
     jd_StrA str = {0};
+    if (!packet_element) return str;
     if (packet_element->value_type != PACKET_ELEMENT_VALUE_TYPE_STRING) return str;
     return packet_element->data.str;
 }
