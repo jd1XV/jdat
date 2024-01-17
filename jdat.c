@@ -96,11 +96,11 @@ PacketHeader* PacketHeaderPushBack(jdat_Packet* packet, jd_StrA tag) {
 
 void PacketHeaderPop(jdat_Packet* packet, PacketHeader* header) {
     if (header == packet->tail) {
-        packet->tail = NULL;
+        packet->tail = header->last;
     }
     
     if (header == packet->head) {
-        packet->head = NULL;
+        packet->head = header->next;
     }
     
     if (header->last) {
