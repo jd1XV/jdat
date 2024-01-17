@@ -63,7 +63,7 @@ const jd_StrA element_windowdressing = {
 jdat_Packet* PacketCreate(jd_Arena* arena) {
     jdat_Packet* packet = jd_ArenaAlloc(arena, sizeof(*packet));
     packet->head = NULL;
-    packet->last = NULL;
+    packet->tail = NULL;
     packet->arena = arena;
     packet->error.success = true;
     return packet;
@@ -71,13 +71,15 @@ jdat_Packet* PacketCreate(jd_Arena* arena) {
 
 PacketHeader* PacketHeaderPushBack(jdat_Packet* packet, jd_StrA tag) {
     PacketHeader* header = NULL;
+    PacketHeader* last = NULL;
     if (packet->head == NULL) {
         packet->head = jd_ArenaAlloc(packet->arena, sizeof(*packet->head));
-        packet->last = packet->head;
+        packet->tail = packet->head;
         header = packet->head;
     } else {
-        packet->last->next = jd_ArenaAlloc(packet->arena, sizeof(*packet->last->next));
-        header = packet->last->next;
+        last = packet->tail;
+        packet->tail->next = jd_ArenaAlloc(packet->arena, sizeof(*packet->tail->next));
+        header = packet->tail->next;
     }
     
     header->tag = jd_StrDupIgnoreChars(packet->arena, tag, jd_StrALit("\t\r\n "));
@@ -85,9 +87,29 @@ PacketHeader* PacketHeaderPushBack(jdat_Packet* packet, jd_StrA tag) {
     header->text_size = tag.count + header_windowdressing.count;
     header->next = NULL;
     header->arena = packet->arena;
-    packet->last = header;
+    header->last = last;
+    
+    packet->tail = header;
     
     return header;
+}
+
+void PacketHeaderPop(jdat_Packet* packet, PacketHeader* header) {
+    if (header == packet->tail) {
+        packet->tail = NULL;
+    }
+    
+    if (header == packet->head) {
+        packet->head = NULL;
+    }
+    
+    if (header->last) {
+        header->last->next = header->next;
+    }
+    
+    if (header->next) {
+        header->next->last = header->last;
+    }
 }
 
 PacketElement* PacketElementPushBack(PacketHeader* header, PacketElement* in_element) {
@@ -471,7 +493,7 @@ jd_StrA PacketToString(jd_Arena* arena, jdat_Packet* packet, jd_ArenaStr* arena_
         b32 c_brac_w = jd_ArenaStrAppendStr(packet_str, c_bracket_s);
         
         header = header->next;
-        if (header == packet->last->next) break;
+        if (header == packet->tail->next) break;
     }
     
     if (!use_passed_arenastr) {
@@ -490,7 +512,7 @@ u64 PacketCalcStringLength(jdat_Packet* packet) {
     while (header != NULL) {
         calc_count += header->text_size;
         header = header->next;
-        if (header == packet->last->next) break;
+        if (header == packet->tail->next) break;
     }
     return calc_count;
 }
@@ -558,16 +580,16 @@ b32 PacketHeaderAppendToArenaStr(PacketHeader* header, jd_ArenaStr* arena_str, b
 }
 
 void PacketJoinToBack(jdat_Packet* to_packet, jdat_Packet* from_packet) {
-    if (to_packet->last == NULL) { to_packet->last = from_packet->head; to_packet->head = from_packet->head; }
-    else to_packet->last->next = from_packet->head; 
+    if (to_packet->tail == NULL) { to_packet->tail = from_packet->head; to_packet->head = from_packet->head; }
+    else to_packet->tail->next = from_packet->head; 
     
-    to_packet->last = from_packet->last;
+    to_packet->tail = from_packet->tail;
 }
 
 b32 PacketCopyToBack(jd_Arena* arena, jdat_Packet* to_packet, jdat_Packet* from_packet) {
     b32 success = true;
     PacketHeader* from_head = from_packet->head;
-    PacketHeader* from_last = from_packet->last;
+    PacketHeader* from_last = from_packet->tail;
     
     jdat_Packet* from_copy = PacketCreate(arena);
     

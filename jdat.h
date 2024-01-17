@@ -51,6 +51,7 @@ typedef struct PacketHeader {
     u64 text_size;
     jd_Arena* arena;
     struct PacketHeader* next;
+    struct PacketHeader* last;
 } PacketHeader;
 
 typedef enum PacketErrorCode {
@@ -69,7 +70,7 @@ typedef struct PacketError {
 typedef struct jdat_Packet {
     PacketError error;
     PacketHeader* head;
-    PacketHeader* last;
+    PacketHeader* tail;
     jd_Arena* arena;
 } jdat_Packet;
 
@@ -89,6 +90,7 @@ void PacketJoinToBack(jdat_Packet* to_packet, jdat_Packet* from_packet);
 b32 PacketCopyToBack(jd_Arena* arena, jdat_Packet* to_packet, jdat_Packet* from_packet);
 PacketHeader* PacketHeaderCopy(jd_Arena* arena, PacketHeader* src);
 b32 PacketHeaderAppendToArenaStr(PacketHeader* header, jd_ArenaStr* arena_str, b32 limit_value_string_len, u64 max_value_string_len);
+void PacketHeaderPop(jdat_Packet* packet, PacketHeader* header);
 
 u64     PacketElementGetU64(PacketElement* packet_element);
 u32     PacketElementGetU32(PacketElement* packet_element);
