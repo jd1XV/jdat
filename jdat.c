@@ -177,7 +177,7 @@ PacketElement* PacketElementPushBackU64(PacketHeader* header, jd_StrA key, u64 v
 PacketElement* PacketElementPushBackU32(PacketHeader* header, jd_StrA key, u32 val) {
     PacketElement element = {
         .key = key,
-        .value_type = PACKET_ELEMENT_VALUE_TYPE_U64,
+        .value_type = PACKET_ELEMENT_VALUE_TYPE_U32,
         .data.U32 = val
     };
     
@@ -185,6 +185,71 @@ PacketElement* PacketElementPushBackU32(PacketHeader* header, jd_StrA key, u32 v
     return out;
 }
 
+PacketElement* PacketElementPushBackS64(PacketHeader* header, jd_StrA key, s64 val) {
+    PacketElement element = {
+        .key = key,
+        .value_type = PACKET_ELEMENT_VALUE_TYPE_S64,
+        .data.S64 = val
+    };
+    
+    PacketElement* out = PacketElementPushBack(header, &element);
+    return out;
+}
+
+PacketElement* PacketElementPushBackS32(PacketHeader* header, jd_StrA key, s32 val) {
+    PacketElement element = {
+        .key = key,
+        .value_type = PACKET_ELEMENT_VALUE_TYPE_S32,
+        .data.S32 = val
+    };
+    
+    PacketElement* out = PacketElementPushBack(header, &element);
+    return out;
+}
+
+PacketElement* PacketElementPushBackF64(PacketHeader* header, jd_StrA key, f64 val) {
+    PacketElement element = {
+        .key = key,
+        .value_type = PACKET_ELEMENT_VALUE_TYPE_F64,
+        .data.F64 = val
+    };
+    
+    PacketElement* out = PacketElementPushBack(header, &element);
+    return out;
+}
+
+PacketElement* PacketElementPushBackF32(PacketHeader* header, jd_StrA key, f32 val) {
+    PacketElement element = {
+        .key = key,
+        .value_type = PACKET_ELEMENT_VALUE_TYPE_F32,
+        .data.F32 = val
+    };
+    
+    PacketElement* out = PacketElementPushBack(header, &element);
+    return out;
+}
+
+PacketElement* PacketElementPushBackB32(PacketHeader* header, jd_StrA key, b32 val) {
+    PacketElement element = {
+        .key = key,
+        .value_type = PACKET_ELEMENT_VALUE_TYPE_B32,
+        .data.B32 = val
+    };
+    
+    PacketElement* out = PacketElementPushBack(header, &element);
+    return out;
+}
+
+PacketElement* PacketElementPushBackC8(PacketHeader* header, jd_StrA key, c8 val) {
+    PacketElement element = {
+        .key = key,
+        .value_type = PACKET_ELEMENT_VALUE_TYPE_C8,
+        .data.C8 = val
+    };
+    
+    PacketElement* out = PacketElementPushBack(header, &element);
+    return out;
+}
 
 PacketElement* PacketElementPushBackString(PacketHeader* header, jd_StrA key, jd_StrA val) {
     PacketElement element = {
