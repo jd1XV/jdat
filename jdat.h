@@ -27,17 +27,17 @@ typedef enum PacketElementValueType {
 typedef union PacketElementData {
     u64 U64;
     u32 U32;
-    s64 S64;
-    s32 S32;
+    i64 S64;
+    i32 S32;
     f64 F64;
     f32 F32;
     b32 B32;
     c8  C8;
-    jd_StrA str;
+    jd_String str;
 } PacketElementData;
 
 typedef struct PacketElement {
-    jd_StrA key;
+    jd_String key;
     PacketElementValueType value_type;
     PacketElementData data;
 } PacketElement;
@@ -45,7 +45,7 @@ typedef struct PacketElement {
 #define PACKET_HEADER_MAX_ELEMENTS 16
 
 typedef struct PacketHeader {
-    jd_StrA tag;
+    jd_String tag;
     u64 num_elements;
     PacketElement* elements[PACKET_HEADER_MAX_ELEMENTS];
     u64 text_size;
@@ -75,22 +75,22 @@ typedef struct jdat_Packet {
 } jdat_Packet;
 
 jdat_Packet* PacketCreate(jd_Arena* arena);
-PacketHeader* PacketHeaderPushBack(jdat_Packet* packet, jd_StrA tag);
+PacketHeader* PacketHeaderPushBack(jdat_Packet* packet, jd_String tag);
 PacketElement* PacketElementPushBack(PacketHeader* header, PacketElement* in_element);
 PacketElement* PacketElementPushBackInPlace(PacketHeader* header, PacketElement* in_element);
-PacketElement* PacketElementPushBackByArg(PacketHeader* header, jd_StrA key, PacketElementValueType type, PacketElementData data);
+PacketElement* PacketElementPushBackByArg(PacketHeader* header, jd_String key, PacketElementValueType type, PacketElementData data);
 
-PacketElement* PacketElementPushBackString(PacketHeader* header, jd_StrA key, jd_StrA val);
-PacketElement* PacketElementPushBackU64(PacketHeader* header, jd_StrA key, u64 val);
-PacketElement* PacketElementPushBackU32(PacketHeader* header, jd_StrA key, u32 val);
+PacketElement* PacketElementPushBackString(PacketHeader* header, jd_String key, jd_String val);
+PacketElement* PacketElementPushBackU64(PacketHeader* header, jd_String key, u64 val);
+PacketElement* PacketElementPushBackU32(PacketHeader* header, jd_String key, u32 val);
 
 void PacketSetError(jdat_Packet* packet, PacketErrorCode code, c8 missing_char, u32 error_index);
-jdat_Packet* PacketParse(jd_Arena* arena, jd_StrA packet_string);
-jd_StrA PacketToString(jd_Arena* arena, jdat_Packet* packet, jd_ArenaStr* arena_str);
+jdat_Packet* PacketParse(jd_Arena* arena, jd_String packet_string);
+jd_String PacketToString(jd_Arena* arena, jdat_Packet* packet, jd_ArenaStr* arena_str);
 u64 PacketCalcStringLength(jdat_Packet* packet);
-PacketHeader* PacketGetFirstHeaderWithTag(jdat_Packet* packet, jd_StrA tag);
-PacketHeader* PacketGetNextHeaderWithTag(PacketHeader* starting_header, jd_StrA tag);
-PacketElement* PacketGetElementWithKey(PacketHeader* header, jd_StrA key);
+PacketHeader* PacketGetFirstHeaderWithTag(jdat_Packet* packet, jd_String tag);
+PacketHeader* PacketGetNextHeaderWithTag(PacketHeader* starting_header, jd_String tag);
+PacketElement* PacketGetElementWithKey(PacketHeader* header, jd_String key);
 void PacketJoinToBack(jdat_Packet* to_packet, jdat_Packet* from_packet);
 b32 PacketCopyToBack(jd_Arena* arena, jdat_Packet* to_packet, jdat_Packet* from_packet);
 PacketHeader* PacketHeaderCopy(jd_Arena* arena, PacketHeader* src);
@@ -99,21 +99,21 @@ void PacketHeaderPop(jdat_Packet* packet, PacketHeader* header);
 
 u64     PacketElementGetU64(PacketElement* packet_element);
 u32     PacketElementGetU32(PacketElement* packet_element);
-s64     PacketElementGetS64(PacketElement* packet_element);
-s32     PacketElementGetS32(PacketElement* packet_element);
+i64     PacketElementGetS64(PacketElement* packet_element);
+i32     PacketElementGetS32(PacketElement* packet_element);
 f64     PacketElementGetF64(PacketElement* packet_element);
 f32     PacketElementGetF32(PacketElement* packet_element);
 b32     PacketElementGetB32(PacketElement* packet_element);
 c8      PacketElementGetC8(PacketElement* packet_element);
-jd_StrA PacketElementGetString(PacketElement* packet_element);
+jd_String PacketElementGetString(PacketElement* packet_element);
 
-typedef struct jd_StrACompressed {
-    jd_StrA str;
+typedef struct jd_StringCompressed {
+    jd_String str;
     u64 decompressed_size;
-} jd_StrACompressed;
+} jd_StringCompressed;
 
-jd_StrACompressed StringCompress(jd_Arena* arena, jd_StrA src);
-jd_StrA StringDecompress(jd_Arena* arena, jd_StrACompressed src);
+jd_StringCompressed StringCompress(jd_Arena* arena, jd_String src);
+jd_String StringDecompress(jd_Arena* arena, jd_StringCompressed src);
 u64 StringCalcCompressedLength(u64 count);
 
 #endif // JDAT_DEFS_H

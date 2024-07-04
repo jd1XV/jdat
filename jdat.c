@@ -3,20 +3,20 @@
 #include <lz4/lz4hc.h>
 #include <lz4/lz4_all.c>
 
-jd_StrACompressed StringCompress(jd_Arena* arena, jd_StrA src) {
-    jd_StrACompressed compressed_string = {0};
+jd_StringCompressed StringCompress(jd_Arena* arena, jd_String src) {
+    jd_StringCompressed compressed_string = {0};
     if (src.count == 0) return compressed_string;
-    compressed_string.str = jd_StrACreateEmpty(arena, LZ4_compressBound(src.count));
+    compressed_string.str = jd_StringCreateEmpty(arena, LZ4_compressBound(src.count));
     compressed_string.decompressed_size = src.count;
-    int actual_compressed_size = LZ4_compress_default(src.val, compressed_string.str.val, src.count, compressed_string.str.count);
+    int actual_compressed_size = LZ4_compress_default(src.mem, compressed_string.str.mem, src.count, compressed_string.str.count);
     compressed_string.str.count = (u64)actual_compressed_size;
     return compressed_string;
 }
 
-jd_StrA StringDecompress(jd_Arena* arena, jd_StrACompressed src) {
+jd_String StringDecompress(jd_Arena* arena, jd_StringCompressed src) {
     if (src.str.count == 0) return src.str;
-    jd_StrA string = jd_StrACreateEmpty(arena, src.decompressed_size);
-    LZ4_decompress_safe(src.str.val, string.val, src.str.count, string.count);
+    jd_String string = jd_StringCreateEmpty(arena, src.decompressed_size);
+    LZ4_decompress_safe(src.str.mem, string.mem, src.str.count, string.count);
     return string;
 }
 
@@ -28,8 +28,8 @@ static const u32 packet_type_sizes[PACKET_ELEMENT_VALUE_TYPE_COUNT] = {
     0,
     sizeof(u64),
     sizeof(u32),
-    sizeof(s64),
-    sizeof(s32),
+    sizeof(i64),
+    sizeof(i32),
     sizeof(f64),
     sizeof(f32),
     sizeof(b32),
@@ -41,8 +41,8 @@ static const u32 packet_type_strlens[PACKET_ELEMENT_VALUE_TYPE_COUNT] = {
     0,
     sizeof("u64:") - 1,
     sizeof("u32:") - 1,
-    sizeof("s64:") - 1,
-    sizeof("s32:") - 1,
+    sizeof("i64:") - 1,
+    sizeof("i32:") - 1,
     sizeof("f64:") - 1,
     sizeof("f32:") - 1,
     sizeof("b32:") - 1,
@@ -50,13 +50,13 @@ static const u32 packet_type_strlens[PACKET_ELEMENT_VALUE_TYPE_COUNT] = {
     sizeof("string:") - 1
 };
 
-const jd_StrA header_windowdressing = {
-    .val = "@ {\n}\n",
+const jd_String header_windowdressing = {
+    .mem = "@ {\n}\n",
     .count = sizeof("@ {\n}\n") - 1
 };
 
-const jd_StrA element_windowdressing = {
-    .val = " = ;\n",
+const jd_String element_windowdressing = {
+    .mem = " = ;\n",
     .count = sizeof(" = ;\n") - 1
 };
 
@@ -69,7 +69,7 @@ jdat_Packet* PacketCreate(jd_Arena* arena) {
     return packet;
 }
 
-PacketHeader* PacketHeaderPushBack(jdat_Packet* packet, jd_StrA tag) {
+PacketHeader* PacketHeaderPushBack(jdat_Packet* packet, jd_String tag) {
     PacketHeader* header = NULL;
     PacketHeader* last = NULL;
     if (packet->head == NULL) {
@@ -82,7 +82,7 @@ PacketHeader* PacketHeaderPushBack(jdat_Packet* packet, jd_StrA tag) {
         header = packet->tail->next;
     }
     
-    header->tag = jd_StrDupIgnoreChars(packet->arena, tag, jd_StrALit("\t\r\n "));
+    header->tag = jd_StringPushIgnoreChars(packet->arena, tag, jd_StrLit("\t\r\n "));
     header->num_elements = 0;
     header->text_size = tag.count + header_windowdressing.count;
     header->next = NULL;
@@ -118,7 +118,7 @@ PacketElement* PacketElementPushBack(PacketHeader* header, PacketElement* in_ele
     header->elements[header->num_elements] = jd_ArenaAlloc(header->arena, sizeof(PacketElement));
     PacketElement* element = header->elements[header->num_elements];
     header->num_elements++;
-    element->key = jd_StrDupIgnoreChars(header->arena, in_element->key, jd_StrALit(" \t\n\r"));
+    element->key = jd_StringPushIgnoreChars(header->arena, in_element->key, jd_StrLit(" \t\n\r"));
     element->value_type = in_element->value_type;
     element->data = in_element->data;
     
@@ -150,7 +150,7 @@ PacketElement* PacketElementPushBackInPlace(PacketHeader* header, PacketElement*
     return element;
 }
 
-PacketElement* PacketElementPushBackByArg(PacketHeader* header, jd_StrA key, PacketElementValueType type, PacketElementData data) {
+PacketElement* PacketElementPushBackByArg(PacketHeader* header, jd_String key, PacketElementValueType type, PacketElementData data) {
     PacketElement element = {
         .key = key,
         .value_type = type,
@@ -162,7 +162,7 @@ PacketElement* PacketElementPushBackByArg(PacketHeader* header, jd_StrA key, Pac
 }
 
 
-PacketElement* PacketElementPushBackU64(PacketHeader* header, jd_StrA key, u64 val) {
+PacketElement* PacketElementPushBackU64(PacketHeader* header, jd_String key, u64 val) {
     PacketElement element = {
         .key = key,
         .value_type = PACKET_ELEMENT_VALUE_TYPE_U64,
@@ -174,7 +174,7 @@ PacketElement* PacketElementPushBackU64(PacketHeader* header, jd_StrA key, u64 v
 }
 
 
-PacketElement* PacketElementPushBackU32(PacketHeader* header, jd_StrA key, u32 val) {
+PacketElement* PacketElementPushBackU32(PacketHeader* header, jd_String key, u32 val) {
     PacketElement element = {
         .key = key,
         .value_type = PACKET_ELEMENT_VALUE_TYPE_U32,
@@ -185,7 +185,7 @@ PacketElement* PacketElementPushBackU32(PacketHeader* header, jd_StrA key, u32 v
     return out;
 }
 
-PacketElement* PacketElementPushBackS64(PacketHeader* header, jd_StrA key, s64 val) {
+PacketElement* PacketElementPushBackS64(PacketHeader* header, jd_String key, i64 val) {
     PacketElement element = {
         .key = key,
         .value_type = PACKET_ELEMENT_VALUE_TYPE_S64,
@@ -196,7 +196,7 @@ PacketElement* PacketElementPushBackS64(PacketHeader* header, jd_StrA key, s64 v
     return out;
 }
 
-PacketElement* PacketElementPushBackS32(PacketHeader* header, jd_StrA key, s32 val) {
+PacketElement* PacketElementPushBackS32(PacketHeader* header, jd_String key, i32 val) {
     PacketElement element = {
         .key = key,
         .value_type = PACKET_ELEMENT_VALUE_TYPE_S32,
@@ -207,7 +207,7 @@ PacketElement* PacketElementPushBackS32(PacketHeader* header, jd_StrA key, s32 v
     return out;
 }
 
-PacketElement* PacketElementPushBackF64(PacketHeader* header, jd_StrA key, f64 val) {
+PacketElement* PacketElementPushBackF64(PacketHeader* header, jd_String key, f64 val) {
     PacketElement element = {
         .key = key,
         .value_type = PACKET_ELEMENT_VALUE_TYPE_F64,
@@ -218,7 +218,7 @@ PacketElement* PacketElementPushBackF64(PacketHeader* header, jd_StrA key, f64 v
     return out;
 }
 
-PacketElement* PacketElementPushBackF32(PacketHeader* header, jd_StrA key, f32 val) {
+PacketElement* PacketElementPushBackF32(PacketHeader* header, jd_String key, f32 val) {
     PacketElement element = {
         .key = key,
         .value_type = PACKET_ELEMENT_VALUE_TYPE_F32,
@@ -229,7 +229,7 @@ PacketElement* PacketElementPushBackF32(PacketHeader* header, jd_StrA key, f32 v
     return out;
 }
 
-PacketElement* PacketElementPushBackB32(PacketHeader* header, jd_StrA key, b32 val) {
+PacketElement* PacketElementPushBackB32(PacketHeader* header, jd_String key, b32 val) {
     PacketElement element = {
         .key = key,
         .value_type = PACKET_ELEMENT_VALUE_TYPE_B32,
@@ -240,7 +240,7 @@ PacketElement* PacketElementPushBackB32(PacketHeader* header, jd_StrA key, b32 v
     return out;
 }
 
-PacketElement* PacketElementPushBackC8(PacketHeader* header, jd_StrA key, c8 val) {
+PacketElement* PacketElementPushBackC8(PacketHeader* header, jd_String key, c8 val) {
     PacketElement element = {
         .key = key,
         .value_type = PACKET_ELEMENT_VALUE_TYPE_C8,
@@ -251,18 +251,18 @@ PacketElement* PacketElementPushBackC8(PacketHeader* header, jd_StrA key, c8 val
     return out;
 }
 
-PacketElement* PacketElementPushBackString(PacketHeader* header, jd_StrA key, jd_StrA val) {
+PacketElement* PacketElementPushBackString(PacketHeader* header, jd_String key, jd_String val) {
     PacketElement element = {
         .key = key,
         .value_type = PACKET_ELEMENT_VALUE_TYPE_STRING,
-        .data.str = jd_StrDup(header->arena, val),
+        .data.str = jd_StringPush(header->arena, val),
     };
     
     PacketElement* out = PacketElementPushBack(header, &element);
     return out;
 }
 
-PacketHeader* PacketGetFirstHeaderWithTag(jdat_Packet* packet, jd_StrA tag) {
+PacketHeader* PacketGetFirstHeaderWithTag(jdat_Packet* packet, jd_String tag) {
     PacketHeader* header = packet->head;
     while (header != NULL) {
         if (jd_StrMatch(header->tag, tag)) {
@@ -275,7 +275,7 @@ PacketHeader* PacketGetFirstHeaderWithTag(jdat_Packet* packet, jd_StrA tag) {
     return header;
 }
 
-PacketHeader* PacketGetNextHeaderWithTag(PacketHeader* starting_header, jd_StrA tag) {
+PacketHeader* PacketGetNextHeaderWithTag(PacketHeader* starting_header, jd_String tag) {
     PacketHeader* header = starting_header->next;
     while (header != NULL) {
         if (jd_StrMatch(header->tag, tag)) {
@@ -288,7 +288,7 @@ PacketHeader* PacketGetNextHeaderWithTag(PacketHeader* starting_header, jd_StrA 
     return header;
 }
 
-PacketElement* PacketGetElementWithKey(PacketHeader* header, jd_StrA key) {
+PacketElement* PacketGetElementWithKey(PacketHeader* header, jd_String key) {
     for (u32 i = 0; i < header->num_elements; i++) {
         if (jd_StrMatch(header->elements[i]->key, key)) {
             return header->elements[i];
@@ -299,7 +299,7 @@ PacketElement* PacketGetElementWithKey(PacketHeader* header, jd_StrA key) {
 }
 
 
-PacketElementValueType ParseElementValueType(jd_StrA value_type_str) {
+PacketElementValueType ParseElementValueType(jd_String value_type_str) {
     if (jd_StrContainsSubstrLit(value_type_str, "u64")) {
         return PACKET_ELEMENT_VALUE_TYPE_U64;
     }
@@ -307,11 +307,11 @@ PacketElementValueType ParseElementValueType(jd_StrA value_type_str) {
     else if (jd_StrContainsSubstrLit(value_type_str, "u32")) {
         return PACKET_ELEMENT_VALUE_TYPE_U32;
     }
-    else if (jd_StrContainsSubstrLit(value_type_str, "s64")) {
+    else if (jd_StrContainsSubstrLit(value_type_str, "i64")) {
         return PACKET_ELEMENT_VALUE_TYPE_S64;
     }
     
-    else if (jd_StrContainsSubstrLit(value_type_str, "s32")) {
+    else if (jd_StrContainsSubstrLit(value_type_str, "i32")) {
         return PACKET_ELEMENT_VALUE_TYPE_S32;
     }
     
@@ -345,32 +345,32 @@ void PacketSetError(jdat_Packet* packet, PacketErrorCode code, c8 missing_char, 
     packet->error.error_index = error_index;
 }
 
-jdat_Packet* PacketParse(jd_Arena* arena, jd_StrA packet_string) {
+jdat_Packet* PacketParse(jd_Arena* arena, jd_String packet_string) {
     jdat_Packet* packet = PacketCreate(arena);
     packet->error.success = true;
     PacketHeader* packet_header = NULL;
     u32 index = 0;
     u32 str_in_progress_index = 0;
     
-    jd_StrA key = {
-        .val = NULL,
+    jd_String key = {
+        .mem = NULL,
         .count = 0
     };
     
-    jd_StrA value = {
-        .val = NULL,
+    jd_String value = {
+        .mem = NULL,
         .count = 0
     };
     
-    jd_StrA value_type_str = {
-        .val = NULL,
+    jd_String value_type_str = {
+        .mem = NULL,
         .count = 0
     };
     
     c8 required_char = '@';
     for (; index < packet_string.count;) {
-        while (index < packet_string.count && packet_string.val[index] != required_char) {
-            if (required_char == '=' && packet_string.val[index] == '}') {
+        while (index < packet_string.count && packet_string.mem[index] != required_char) {
+            if (required_char == '=' && packet_string.mem[index] == '}') {
                 required_char = '@';
             }
             index++;
@@ -398,8 +398,8 @@ jdat_Packet* PacketParse(jd_Arena* arena, jd_StrA packet_string) {
         else if (required_char == '{') {
             u64 tag_count = index - str_in_progress_index;
             if (tag_count == 0) { PacketSetError(packet, PACKET_INCOMPLETE_HEADER, required_char, index); break; } 
-            jd_StrA tag = {
-                .val = &packet_string.val[str_in_progress_index],
+            jd_String tag = {
+                .mem = &packet_string.mem[str_in_progress_index],
                 .count = tag_count
             };
             
@@ -412,7 +412,7 @@ jdat_Packet* PacketParse(jd_Arena* arena, jd_StrA packet_string) {
             u64 tag_count = index - str_in_progress_index;
             if (tag_count == 0) { PacketSetError(packet, PACKET_INCOMPLETE_ELEMENT, required_char, index); break; }
             
-            key.val = &packet_string.val[str_in_progress_index];
+            key.mem = &packet_string.mem[str_in_progress_index];
             key.count = tag_count;
             
             str_in_progress_index = index + 1;
@@ -422,7 +422,7 @@ jdat_Packet* PacketParse(jd_Arena* arena, jd_StrA packet_string) {
         else if (required_char == ':') {
             u64 tag_count = index - str_in_progress_index;
             if (tag_count == 0) { PacketSetError(packet, PACKET_INCOMPLETE_ELEMENT, required_char, index); break; }
-            value_type_str.val = &packet_string.val[str_in_progress_index];
+            value_type_str.mem = &packet_string.mem[str_in_progress_index];
             value_type_str.count = tag_count;
             
             PacketElementValueType type = ParseElementValueType(value_type_str);
@@ -436,49 +436,49 @@ jdat_Packet* PacketParse(jd_Arena* arena, jd_StrA packet_string) {
             
             if (type == PACKET_ELEMENT_VALUE_TYPE_U64) {
                 jd_Assert(size == sizeof(u64));
-                u64* ptr = (u64*)&packet_string.val[data_index];
+                u64* ptr = (u64*)&packet_string.mem[data_index];
                 element.data.U64 = *ptr;
             }
             
             else if (type == PACKET_ELEMENT_VALUE_TYPE_U32) {
                 jd_Assert(size == sizeof(u32));
-                u32* ptr = (u32*)&packet_string.val[data_index];
+                u32* ptr = (u32*)&packet_string.mem[data_index];
                 element.data.U32 = *ptr;
             }
             
             else if (type == PACKET_ELEMENT_VALUE_TYPE_S64) {
-                jd_Assert(size == sizeof(s64));
-                s64* ptr = (s64*)&packet_string.val[data_index];
+                jd_Assert(size == sizeof(i64));
+                i64* ptr = (i64*)&packet_string.mem[data_index];
                 element.data.S64 = *ptr;
             }
             
             else if (type == PACKET_ELEMENT_VALUE_TYPE_S32) {
-                jd_Assert(size == sizeof(s32));
-                s32* ptr = (s32*)&packet_string.val[data_index];
+                jd_Assert(size == sizeof(i32));
+                i32* ptr = (i32*)&packet_string.mem[data_index];
                 element.data.S32 = *ptr;
             }
             
             else if (type == PACKET_ELEMENT_VALUE_TYPE_F64) {
                 jd_Assert(size == sizeof(f64));
-                f64* ptr = (f64*)&packet_string.val[data_index];
+                f64* ptr = (f64*)&packet_string.mem[data_index];
                 element.data.F64 = *ptr;
             }
             
             else if (type == PACKET_ELEMENT_VALUE_TYPE_F32) {
                 jd_Assert(size == sizeof(f32));
-                f32* ptr = (f32*)&packet_string.val[data_index];
+                f32* ptr = (f32*)&packet_string.mem[data_index];
                 element.data.F32 = *ptr;
             }
             
             else if (type == PACKET_ELEMENT_VALUE_TYPE_B32) {
                 jd_Assert(size == sizeof(b32));
-                b32* ptr = (b32*)&packet_string.val[data_index];
+                b32* ptr = (b32*)&packet_string.mem[data_index];
                 element.data.B32 = *ptr;
             }
             
             else if (type == PACKET_ELEMENT_VALUE_TYPE_C8) {
                 jd_Assert(size == sizeof(c8));
-                c8* ptr = (c8*)&packet_string.val[data_index];
+                c8* ptr = (c8*)&packet_string.mem[data_index];
                 element.data.C8 = *ptr;
             }
             
@@ -486,16 +486,16 @@ jdat_Packet* PacketParse(jd_Arena* arena, jd_StrA packet_string) {
                 jd_Assert(size == sizeof(u64));
                 if (data_index + size > packet_string.count) { PacketSetError(packet, PACKET_INCOMPLETE_ELEMENT, required_char, index); break; }
                 u64  str_index = data_index + sizeof(u64);
-                u64* str_len_ptr = (u64*)&packet_string.val[data_index];
+                u64* str_len_ptr = (u64*)&packet_string.mem[data_index];
                 
                 u64 count = *str_len_ptr;
                 if (count + str_index > packet_string.count) { PacketSetError(packet, PACKET_INCOMPLETE_ELEMENT, required_char, index); break; }
-                jd_StrA data_str = {
+                jd_String data_str = {
                     .count = count,
-                    .val = &packet_string.val[str_index]
+                    .mem = &packet_string.mem[str_index]
                 };
                 
-                element.data.str = jd_StrDup(arena, data_str);
+                element.data.str = jd_StringPush(arena, data_str);
                 index += count;
             }
             
@@ -520,18 +520,18 @@ jdat_Packet* PacketParse(jd_Arena* arena, jd_StrA packet_string) {
     return packet;
 }
 
-jd_StrA PacketToString(jd_Arena* arena, jdat_Packet* packet, jd_ArenaStr* arena_str) {
-    jd_StrA element_type_strings[PACKET_ELEMENT_VALUE_TYPE_COUNT] = {
-        jd_StrALit("NULL"),
-        jd_StrALit("u64:"),
-        jd_StrALit("u32:"),
-        jd_StrALit("s64:"),
-        jd_StrALit("s32:"),
-        jd_StrALit("f64:"),
-        jd_StrALit("f32:"),
-        jd_StrALit("b32:"),
-        jd_StrALit("c8:"),
-        jd_StrALit("string:")
+jd_String PacketToString(jd_Arena* arena, jdat_Packet* packet, jd_ArenaStr* arena_str) {
+    jd_String element_type_strings[PACKET_ELEMENT_VALUE_TYPE_COUNT] = {
+        jd_StrLit("NULL"),
+        jd_StrLit("u64:"),
+        jd_StrLit("u32:"),
+        jd_StrLit("i64:"),
+        jd_StrLit("i32:"),
+        jd_StrLit("f64:"),
+        jd_StrLit("f32:"),
+        jd_StrLit("b32:"),
+        jd_StrLit("c8:"),
+        jd_StrLit("string:")
     };
     
     b32 use_passed_arenastr = true;
@@ -544,10 +544,10 @@ jd_StrA PacketToString(jd_Arena* arena, jdat_Packet* packet, jd_ArenaStr* arena_
         packet_str = arena_str;
     }
     
-    jd_StrA o_bracket_s = jd_StrALit(" {\n");
-    jd_StrA equals_s = jd_StrALit(" = ");
-    jd_StrA semic_s = jd_StrALit(";\n");
-    jd_StrA c_bracket_s = jd_StrALit("}\n");
+    jd_String o_bracket_s = jd_StrLit(" {\n");
+    jd_String equals_s = jd_StrLit(" = ");
+    jd_String semic_s = jd_StrLit(";\n");
+    jd_String c_bracket_s = jd_StrLit("}\n");
     
     PacketHeader* header = packet->head;
     while (header != NULL) {
@@ -587,7 +587,7 @@ jd_StrA PacketToString(jd_Arena* arena, jdat_Packet* packet, jd_ArenaStr* arena_
     }
     
     if (!use_passed_arenastr) {
-        jd_StrA dup_str = jd_StrDup(arena, packet_str->str);
+        jd_String dup_str = jd_StringPush(arena, packet_str->str);
         jd_ArenaStrRelease(packet_str);
         return dup_str;
     }
@@ -607,22 +607,22 @@ u64 PacketCalcStringLength(jdat_Packet* packet) {
     return calc_count;
 }
 
-jd_StrA o_bracket_s = jd_StrAConst(" {\n");
-jd_StrA equals_s = jd_StrAConst(" = ");
-jd_StrA semic_s = jd_StrAConst(";\n");
-jd_StrA c_bracket_s = jd_StrAConst("}\n");
+jd_String o_bracket_s = jd_StrConst(" {\n");
+jd_String equals_s = jd_StrConst(" = ");
+jd_String semic_s = jd_StrConst(";\n");
+jd_String c_bracket_s = jd_StrConst("}\n");
 
-const jd_StrA element_type_strings[PACKET_ELEMENT_VALUE_TYPE_COUNT] = {
-    jd_StrAConst("NULL:"),
-    jd_StrAConst("u64:"),
-    jd_StrAConst("u32:"),
-    jd_StrAConst("s64:"),
-    jd_StrAConst("s32:"),
-    jd_StrAConst("f64:"),
-    jd_StrAConst("f32:"),
-    jd_StrAConst("b32:"),
-    jd_StrAConst("c8:"),
-    jd_StrAConst("string:")
+const jd_String element_type_strings[PACKET_ELEMENT_VALUE_TYPE_COUNT] = {
+    jd_StrConst("NULL:"),
+    jd_StrConst("u64:"),
+    jd_StrConst("u32:"),
+    jd_StrConst("i64:"),
+    jd_StrConst("i32:"),
+    jd_StrConst("f64:"),
+    jd_StrConst("f32:"),
+    jd_StrConst("b32:"),
+    jd_StrConst("c8:"),
+    jd_StrConst("string:")
 };
 
 b32 PacketHeaderAppendToArenaStr(PacketHeader* header, jd_ArenaStr* arena_str, b32 limit_value_string_len, u64 max_value_string_len) {
@@ -649,7 +649,7 @@ b32 PacketHeaderAppendToArenaStr(PacketHeader* header, jd_ArenaStr* arena_str, b
             
             case PACKET_ELEMENT_VALUE_TYPE_STRING:
             if (limit_value_string_len) {
-                jd_StrA trunc_str = header->elements[i]->data.str;
+                jd_String trunc_str = header->elements[i]->data.str;
                 trunc_str.count = max_value_string_len;
                 b32 string_w = jd_ArenaStrAppendCountAndStr(arena_str, trunc_str);
             }
@@ -704,17 +704,17 @@ b32 PacketCopyToBack(jd_Arena* arena, jdat_Packet* to_packet, jdat_Packet* from_
 PacketHeader* PacketHeaderCopy(jd_Arena* arena, PacketHeader* src) {
     PacketHeader* dst = jd_ArenaAlloc(arena, sizeof(*dst));
     dst->arena = arena;
-    dst->tag = jd_StrDup(dst->arena, src->tag);
+    dst->tag = jd_StringPush(dst->arena, src->tag);
     dst->num_elements = src->num_elements;
     for (u64 i = 0; i < dst->num_elements; i++) {
         dst->elements[i] = jd_ArenaAlloc(arena, sizeof(PacketElement));
         PacketElement* dst_e = dst->elements[i];
-        dst_e->key = jd_StrDup(dst->arena, src->elements[i]->key);
+        dst_e->key = jd_StringPush(dst->arena, src->elements[i]->key);
         dst_e->value_type = src->elements[i]->value_type;
         if (dst_e->value_type != PACKET_ELEMENT_VALUE_TYPE_STRING)
             dst_e->data = src->elements[i]->data;
         else 
-            dst_e->data.str = jd_StrDup(arena, src->elements[i]->data.str);
+            dst_e->data.str = jd_StringPush(arena, src->elements[i]->data.str);
     }
     dst->text_size = src->text_size;
     return dst;
@@ -732,13 +732,13 @@ u32 PacketElementGetU32(PacketElement* packet_element) {
     return packet_element->data.U32;
 }
 
-s64 PacketElementGetS64(PacketElement* packet_element) {
+i64 PacketElementGetS64(PacketElement* packet_element) {
     if (!packet_element) return 0;
     if (packet_element->value_type != PACKET_ELEMENT_VALUE_TYPE_S64) return 0;
     return packet_element->data.S64;
 }
 
-s32 PacketElementGetS32(PacketElement* packet_element) {
+i32 PacketElementGetS32(PacketElement* packet_element) {
     if (!packet_element) return 0;
     if (packet_element->value_type != PACKET_ELEMENT_VALUE_TYPE_S32) return 0;
     return packet_element->data.S32;
@@ -768,8 +768,8 @@ c8 PacketElementGetC8(PacketElement* packet_element) {
     return packet_element->data.C8;
 }
 
-jd_StrA PacketElementGetString(PacketElement* packet_element) {
-    jd_StrA str = {0};
+jd_String PacketElementGetString(PacketElement* packet_element) {
+    jd_String str = {0};
     if (!packet_element) return str;
     if (packet_element->value_type != PACKET_ELEMENT_VALUE_TYPE_STRING) return str;
     return packet_element->data.str;
