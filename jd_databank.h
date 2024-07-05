@@ -194,6 +194,7 @@ typedef struct jd_DataBank {
 } jd_DataBank;
 
 typedef struct jd_DataBankConfig {
+    jd_Arena* arena;
     jd_String name;
     jd_DataType disabled_types; // |= types to this flag to disable them
     u64 total_memory_cap;
@@ -207,10 +208,12 @@ jd_DataBank*  jd_DataBankDeserialize(jd_File view);
 
 jd_ForceInline jd_DataNode* jd_DataBankGetRoot(jd_DataBank* bank);
 
-jd_DataNode*   jd_DataBankAddRecord(jd_DataNode* parent, jd_String key, jd_DataNodeOptions* options);
-jd_DataNode*   jd_DataBankAddRecordWithPK(jd_DataNode* parent, jd_String key, u64 primary_key, jd_DataNodeOptions* options);
-jd_DataNode*   jd_DataPointAdd(jd_DataNode* parent, jd_String key, jd_Value value, jd_DataNodeOptions* options);
+jd_DataNode*   jd_DataBankAddRecord(jd_DataNode* parent, jd_String key);
+jd_DataNode*   jd_DataBankAddRecordWithPK(jd_DataNode* parent, jd_String key, u64 primary_key);
+jd_DataNode*   jd_DataPointAdd(jd_DataNode* parent, jd_String key, jd_Value value);
 jd_Value       jd_DataPointGetValue(jd_DataNode* record, jd_String key);
+jd_DataNode*   jd_DataBankGetRecordWithID(jd_DataBank* bank, u64 primary_key);
+jd_DataNode*   jd_DataBankCopySubtree(jd_Arena arena, jd_DataNode* subtree_root);
 
 jd_ForceInline jd_Value jd_ValueCastString(jd_String string);
 jd_ForceInline jd_Value jd_ValueCastBin(jd_View view);

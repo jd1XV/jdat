@@ -265,7 +265,7 @@ PacketElement* PacketElementPushBackString(PacketHeader* header, jd_String key, 
 PacketHeader* PacketGetFirstHeaderWithTag(jdat_Packet* packet, jd_String tag) {
     PacketHeader* header = packet->head;
     while (header != NULL) {
-        if (jd_StrMatch(header->tag, tag)) {
+        if (jd_StringMatch(header->tag, tag)) {
             return header;
         }
         
@@ -278,7 +278,7 @@ PacketHeader* PacketGetFirstHeaderWithTag(jdat_Packet* packet, jd_String tag) {
 PacketHeader* PacketGetNextHeaderWithTag(PacketHeader* starting_header, jd_String tag) {
     PacketHeader* header = starting_header->next;
     while (header != NULL) {
-        if (jd_StrMatch(header->tag, tag)) {
+        if (jd_StringMatch(header->tag, tag)) {
             return header;
         }
         
@@ -290,7 +290,7 @@ PacketHeader* PacketGetNextHeaderWithTag(PacketHeader* starting_header, jd_Strin
 
 PacketElement* PacketGetElementWithKey(PacketHeader* header, jd_String key) {
     for (u32 i = 0; i < header->num_elements; i++) {
-        if (jd_StrMatch(header->elements[i]->key, key)) {
+        if (jd_StringMatch(header->elements[i]->key, key)) {
             return header->elements[i];
         }
     }

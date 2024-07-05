@@ -145,7 +145,7 @@ jd_DataNode* jd_DataBankGetRecordWithID(jd_DataBank* bank, u64 primary_key) {
     return n;
 }
 
-jd_DataNode* jd_DataBankAddRecordWithPK(jd_DataNode* parent, jd_String key, u64 primary_key, jd_DataNodeOptions* options) {
+jd_DataNode* jd_DataBankAddRecordWithPK(jd_DataNode* parent, jd_String key, u64 primary_key) {
     if (!parent) {
         jd_LogError("No and/or null parent specified. To create a top level record, specify the DataBank root as parent. DataBank root can be accessed (thread-safe-ly) by using jd_DataBankGetRoot(my_data_bank).", jd_Error_APIMisuse, jd_Error_Fatal);
     }
@@ -169,10 +169,6 @@ jd_DataNode* jd_DataBankAddRecordWithPK(jd_DataNode* parent, jd_String key, u64 
         n = n->next_with_same_hash;
     }
     
-    if (options && options->display.count > 0) {
-        n->display = jd_StringPush(db->arena, options->display);
-    }
-    
     n->lock = jd_RWLockCreate(db->arena);
     n->key = jd_StringPush(db->arena, key);
     n->value.U64 = primary_key;
@@ -185,7 +181,7 @@ jd_DataNode* jd_DataBankAddRecordWithPK(jd_DataNode* parent, jd_String key, u64 
     return n;
 }
 
-jd_DataNode* jd_DataBankAddRecord(jd_DataNode* parent, jd_String key, jd_DataNodeOptions* options) {
+jd_DataNode* jd_DataBankAddRecord(jd_DataNode* parent, jd_String key) {
     if (!parent) {
         jd_LogError("No and/or null parent specified. To create a top level record, specify the DataBank root as parent. DataBank root can be accessed (thread-safe-ly) by using jd_DataBankGetRoot(my_data_bank).", jd_Error_APIMisuse, jd_Error_Fatal);
     }
@@ -197,12 +193,12 @@ jd_DataNode* jd_DataBankAddRecord(jd_DataNode* parent, jd_String key, jd_DataNod
     }
     
     u64 pk = jd_DataBankGetPrimaryKey(db);
-    jd_DataNode* n = jd_DataBankAddRecordWithPK(parent, key, pk, options);
+    jd_DataNode* n = jd_DataBankAddRecordWithPK(parent, key, pk);
     
     return n;
 }
 
-jd_DataNode* jd_DataPointAdd(jd_DataNode* record, jd_String key, jd_Value value, jd_DataNodeOptions* options) {
+jd_DataNode* jd_DataPointAdd(jd_DataNode* record, jd_String key, jd_Value value) {
     if (value.type == jd_DataType_None) {
         jd_LogError("No data type specified.", jd_Error_APIMisuse, jd_Error_Fatal);
     }
@@ -235,11 +231,6 @@ jd_DataNode* jd_DataPointAdd(jd_DataNode* record, jd_String key, jd_Value value,
     jd_DataNode* n = jd_ArenaAlloc(bank->arena, sizeof(*n));
     n->key = jd_StringPush(bank->arena, key);
     n->value.type = value.type;
-    
-    if (options && options->display.count > 0) {
-        n->display = jd_StringPush(bank->arena, options->display);
-    }
-    
     
     switch (value.type) {
         case jd_DataType_String: {
@@ -431,8 +422,8 @@ f64 jd_ValueF64(jd_Value v) {
     return 0;
 }
 
-const static u32 jd_databank_magic_number = 0x2E6D6150;
-const static u64 jd_databank_root_pk = -1;
+jd_ReadOnly static u32 jd_databank_magic_number = 0x2E6D6150;
+jd_ReadOnly static u64 jd_databank_root_pk = -1;
 
 jd_DataBank* jd_DataBankDeserialize(jd_File file) {
     typedef enum p_state {
@@ -450,7 +441,6 @@ jd_DataBank* jd_DataBankDeserialize(jd_File file) {
         jd_Value value;
         u64 key_count;
         u64 parent;
-        jd_String display;
     } p_data;
     
     u64 index = 0;
@@ -480,7 +470,7 @@ jd_DataBank* jd_DataBankDeserialize(jd_File file) {
     jd_DataBankConfig cfg = {
         .disabled_types = disabled_types,
         .primary_key_hash_table_slot_count = hash_table_slot_count,
-        .primary_key_index = pk_index
+        .primary_key_index = pk_index,
     };
     
     jd_DataBank* bank = jd_DataBankCreate(&cfg);
@@ -506,16 +496,6 @@ jd_DataBank* jd_DataBankDeserialize(jd_File file) {
             case p_need_key: {
                 read_success = jd_FileReadString(file, &index, data.key_count, &data.key);
                 if (!read_success) return bank;
-                state = p_need_display_count;
-                break;
-            }
-            
-            case p_need_display_count: {
-                read_success = jd_FileReadU64(file, &index, &data.display.count);
-                if (data.display.count) {
-                    jd_FileReadString(file, &index, data.display.count, &data.display);
-                }
-                
                 state = p_need_parent;
                 break;
             }
@@ -600,17 +580,13 @@ jd_DataBank* jd_DataBankDeserialize(jd_File file) {
                     break;
                 }
                 
-                jd_DataNodeOptions opt = {
-                    .display = data.display
-                };
-                
                 if (data.value.type == jd_DataType_Record) {
-                    jd_DataNode* n = jd_DataBankAddRecordWithPK(p, data.key, data.value.U64, &opt);
+                    jd_DataNode* n = jd_DataBankAddRecordWithPK(p, data.key, data.value.U64);
                 } else {
-                    jd_DataNode* n = jd_DataPointAdd(p, data.key, data.value, &opt);
+                    jd_DataNode* n = jd_DataPointAdd(p, data.key, data.value);
                 }
                 
-                jd_MemSet(&data, 0, sizeof(data));
+                jd_Platform_MemSet(&data, 0, sizeof(data));
                 state = p_need_type;
                 break;
             }
@@ -643,10 +619,6 @@ jd_DFile* jd_DataBankSerialize(jd_DataBank* bank) {
         jd_DFileAppend(out, &v.type);
         jd_DFileAppend(out, &n->key.count);
         jd_DFileAppendSized(out, n->key.count, n->key.mem);
-        jd_DFileAppend(out, &n->display.count);
-        if (n->display.count > 0) {
-            jd_DFileAppendSized(out, n->display.count, n->display.mem);
-        }
         
         if (n->parent == root) {
             jd_DFileAppend(out, &jd_databank_root_pk);
