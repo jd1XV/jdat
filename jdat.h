@@ -8,8 +8,6 @@
 #define jdat_ForEachElement(identifier, header) for (u64 identifier = 0; identifier < header->num_elements; identifier++)
 #define jdat_ForEachHeader(identifier, packet) for (PacketHeader* identifier = packet->head; identifier != NULL && identifier != packet->last->next; identifier = identifier->next)
 
-#define HEADER_MESSAGE_SIZE KILOBYTES(1)
-
 typedef enum PacketElementValueType {
     PACKET_ELEMENT_VALUE_TYPE_NULL,
     PACKET_ELEMENT_VALUE_TYPE_U64,

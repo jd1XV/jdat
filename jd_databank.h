@@ -46,10 +46,18 @@ x->prev->prev = _prev; \
 x->prev->next = x; \
 } while (0) \
 
+
 #define jd_DLinksClear(x) \
 do { \
 jd_SLinkClear(x); \
 x->prev = 0; \
+} while (0) \
+
+#define jd_DLinksPop(x) \
+do { \
+if (x->prev) x->prev->next = x->next;\
+if (x->next) x->next->prev = x->prev;\
+jd_DLinksClear(x); \
 } while (0) \
 
 #define jd_TreeLinkNext(x, y) \
@@ -94,16 +102,22 @@ p->first_child = c; \
 
 #define jd_TreeLinksClear(x) \
 do { \
-if (x->parent) { \
-if (x->parent->first_child == x) x->parent->first_child = x->next; \
-if (x->parent->last_child == x)  x->parent->last_child = x->prev; \
-} \
-\
 jd_DLinksClear(x); \
 x->parent = 0; \
 x->last_child = 0; \
 x->first_child = 0; \
 } while (0) \
+
+#define jd_TreeLinksPop(x) \
+do { \
+if (x->parent) { \
+if (x->parent->first_child == x) x->parent->first_child = x->next; \
+if (x->parent->last_child == x)  x->parent->last_child = x->prev; \
+} \
+jd_DLinksPop(x);\
+jd_TreeLinksClear(x);\
+} while (0) \
+
 
 #define jd_TreeTraversePreorder(x) \
 do { \
@@ -122,6 +136,31 @@ x = x->parent; \
 \
 if (x != 0) \
 x = x->next; \
+} \
+} while (0) \
+
+#define jd_TreeTraversePreorderOut(x, down, across) \
+do { \
+if (x->first_child) { \
+x = x->first_child; \
+down++;\
+break; \
+} \
+else if (x->next) { \
+x = x->next; \
+across++;\
+break; \
+} \
+else { \
+while (x != 0 && x->next == 0) { \
+x = x->parent; \
+down--;\
+} \
+\
+if (x != 0) { \
+x = x->next; \
+across++; \
+} \
 } \
 } while (0) \
 
@@ -202,39 +241,73 @@ typedef struct jd_DataBankConfig {
     u64 primary_key_index;
 } jd_DataBankConfig;
 
+typedef enum jd_DataPointFilterRule {
+    jd_FilterRule_None,
+    jd_FilterRule_GreaterThan,
+    jd_FilterRule_LessThan,
+    jd_FilterRule_GreaterThanOrEq,
+    jd_FilterRule_LessThanOrEq,
+    jd_FilterRule_Equals, 
+    jd_FilterRule_DoesNotEqual,
+    jd_FilterRule_Contains,
+    jd_FilterRule_DoesNotContain,
+    jd_FilterRule_Count
+} jd_DataPointFilterRule;
+
+typedef struct jd_DataPointFilter {
+    jd_String key;
+    jd_Value  value;
+    jd_DataPointFilterRule rule;
+    jd_Node(jd_DataPointFilter);
+} jd_DataPointFilter;
+
+typedef enum jd_DataPointSortRule {
+    jd_SortRule_Ascending,
+    jd_SortRule_Descending,
+    jd_SortRule_Count
+} jd_DataPointSortRule;
+
+jd_DataPointFilter* jd_DataPointFilterCreate(jd_Arena* arena, jd_String key);
+jd_DataPointFilter* jd_DataPointFilterPush(jd_Arena* arena, jd_DataPointFilter* parent, jd_String key, jd_Value value, jd_DataPointFilterRule rule);
+b32 jd_DataPointFilterEvaluate(jd_DataPointFilter* filter, jd_DataNode* n);
+
 jd_DataBank*  jd_DataBankCreate(jd_DataBankConfig* config);
 jd_DFile*     jd_DataBankSerialize(jd_DataBank* bank);
-jd_DataBank*  jd_DataBankDeserialize(jd_File view);
+jd_DataBank*  jd_DataBankDeserialize(jd_File view, jd_Arena* arena);
 
 jd_ForceInline jd_DataNode* jd_DataBankGetRoot(jd_DataBank* bank);
 
 jd_DataNode*   jd_DataBankAddRecord(jd_DataNode* parent, jd_String key);
 jd_DataNode*   jd_DataBankAddRecordWithPK(jd_DataNode* parent, jd_String key, u64 primary_key);
-jd_DataNode*   jd_DataPointAdd(jd_DataNode* parent, jd_String key, jd_Value value);
+jd_DataNode*   jd_DataPointSet(jd_DataNode* parent, jd_String key, jd_Value value);
+jd_DataNode*   jd_DataPointGet(jd_DataNode* record, jd_String key);
+void           jd_DataBankDeleteRecordByID(jd_DataBank* bank, u64 primary_key);
 jd_Value       jd_DataPointGetValue(jd_DataNode* record, jd_String key);
 jd_DataNode*   jd_DataBankGetRecordWithID(jd_DataBank* bank, u64 primary_key);
-jd_DataNode*   jd_DataBankCopySubtree(jd_Arena arena, jd_DataNode* subtree_root);
+u64            jd_DataBankGetRecordPrimaryKey(jd_DataNode* record);
+jd_DataNode*   jd_DataBankCopySubtree(jd_DataNode* parent, jd_DataNode* subtree_root, b32 include_original_pk);
+jd_DataNode*   jd_DataBankGetRecord(jd_DataNode* search_start, jd_String key);
 
-jd_ForceInline jd_Value jd_ValueCastString(jd_String string);
-jd_ForceInline jd_Value jd_ValueCastBin(jd_View view);
-jd_ForceInline jd_Value jd_ValueCastU64(u64 val);
-jd_ForceInline jd_Value jd_ValueCastU32(u32 val);
-jd_ForceInline jd_Value jd_ValueCastB32(b32 val);
-jd_ForceInline jd_Value jd_ValueCastC8(c8 val);
-jd_ForceInline jd_Value jd_ValueCastI64(i64 val);
-jd_ForceInline jd_Value jd_ValueCastI32(i32 val);
-jd_ForceInline jd_Value jd_ValueCastF32(f32 val);
-jd_ForceInline jd_Value jd_ValueCastF64(f64 val);
+jd_Value jd_ValueCastString(jd_String string);
+jd_Value jd_ValueCastBin(jd_View view);
+jd_Value jd_ValueCastU64(u64 val);
+jd_Value jd_ValueCastU32(u32 val);
+jd_Value jd_ValueCastB32(b32 val);
+jd_Value jd_ValueCastC8(c8 val);
+jd_Value jd_ValueCastI64(i64 val);
+jd_Value jd_ValueCastI32(i32 val);
+jd_Value jd_ValueCastF32(f32 val);
+jd_Value jd_ValueCastF64(f64 val);
 
-jd_ForceInline jd_String jd_ValueString(jd_Value v);
-jd_ForceInline jd_View   jd_ValueBin(jd_Value v);
-jd_ForceInline u64       jd_ValueU64(jd_Value v);
-jd_ForceInline u32       jd_ValueU32(jd_Value v);
-jd_ForceInline b32       jd_ValueB32(jd_Value v);
-jd_ForceInline c8        jd_ValueC8 (jd_Value v);
-jd_ForceInline i64       jd_ValueI64(jd_Value v);
-jd_ForceInline i32       jd_ValueI32(jd_Value v);
-jd_ForceInline f32       jd_ValueF32(jd_Value v);
-jd_ForceInline f64       jd_ValueF64(jd_Value v);
+jd_String jd_ValueString(jd_Value v);
+jd_View   jd_ValueBin(jd_Value v);
+u64       jd_ValueU64(jd_Value v);
+u32       jd_ValueU32(jd_Value v);
+b32       jd_ValueB32(jd_Value v);
+c8        jd_ValueC8 (jd_Value v);
+i64       jd_ValueI64(jd_Value v);
+i32       jd_ValueI32(jd_Value v);
+f32       jd_ValueF32(jd_Value v);
+f64       jd_ValueF64(jd_Value v);
 
 #endif

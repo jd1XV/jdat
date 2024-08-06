@@ -145,6 +145,78 @@ jd_DataNode* jd_DataBankGetRecordWithID(jd_DataBank* bank, u64 primary_key) {
     return n;
 }
 
+jd_DataNode* jd_DataBankCopySubtree(jd_DataNode* parent, jd_DataNode* subtree_root, b32 include_original_pk) {
+    if (!parent || !parent->bank) {
+        jd_LogError("Parent is null or does not belong to a Databank", jd_Error_APIMisuse, jd_Error_Fatal);
+    }
+    
+    jd_DataNode* sn = subtree_root;
+    jd_DataNode* p = parent; // this is a record
+    jd_DataNode* out = 0;
+    
+    jd_RWLockGet(subtree_root->lock, jd_RWLock_Read);
+    
+    while (sn != 0 && sn != subtree_root->next) {
+        switch (sn->value.type) {
+            case jd_DataType_Record: {
+                p = jd_DataBankAddRecord(p, sn->key);
+                if (include_original_pk) {
+                    jd_DataPointSet(p, jd_StrLit("original_pk"), jd_ValueCastU64(sn->value.U64));
+                }
+                if (!out) out = p;
+                break;
+            }
+            
+            case jd_DataType_None: {
+                jd_LogError("Invalid node found in tree", jd_Error_APIMisuse, jd_Error_Fatal);
+                break;
+            }
+            
+            default: {
+                jd_DataPointSet(p, sn->key, sn->value);
+                break;
+            }
+        }
+        
+        jd_DataNode* last = sn;
+        i32 down = 0;
+        i32 across = 0;
+        jd_TreeTraversePreorderOut(sn, down, across);
+        
+        for (i32 i = 0; i > down; i--) {
+            p = p->parent;
+            if (p == parent) {
+                sn = 0;
+                break;
+            }
+        } 
+    }
+    
+    jd_RWLockRelease(subtree_root->lock, jd_RWLock_Read);
+    
+    return out;
+}
+
+jd_DataNode* jd_DataBankGetRecord(jd_DataNode* search_start, jd_String key) {
+    jd_DataNode* n = search_start;
+    jd_TreeTraversePreorder(n);
+    
+    while (n) {
+        if (n->value.type == jd_DataType_Record) {
+            jd_RWLockGet(n->lock, jd_RWLock_Read);
+            if (jd_StringMatch(n->key, key)) {
+                jd_RWLockRelease(n->lock, jd_RWLock_Read);
+                return n;
+            }
+            jd_RWLockRelease(n->lock, jd_RWLock_Read);
+        }
+        
+        jd_TreeTraversePreorder(n);
+    }
+    
+    return n;
+}
+
 jd_DataNode* jd_DataBankAddRecordWithPK(jd_DataNode* parent, jd_String key, u64 primary_key) {
     if (!parent) {
         jd_LogError("No and/or null parent specified. To create a top level record, specify the DataBank root as parent. DataBank root can be accessed (thread-safe-ly) by using jd_DataBankGetRoot(my_data_bank).", jd_Error_APIMisuse, jd_Error_Fatal);
@@ -198,7 +270,7 @@ jd_DataNode* jd_DataBankAddRecord(jd_DataNode* parent, jd_String key) {
     return n;
 }
 
-jd_DataNode* jd_DataPointAdd(jd_DataNode* record, jd_String key, jd_Value value) {
+jd_DataNode* jd_DataPointSet(jd_DataNode* record, jd_String key, jd_Value value) {
     if (value.type == jd_DataType_None) {
         jd_LogError("No data type specified.", jd_Error_APIMisuse, jd_Error_Fatal);
     }
@@ -226,10 +298,16 @@ jd_DataNode* jd_DataPointAdd(jd_DataNode* record, jd_String key, jd_Value value)
         jd_LogError("Node passed to 'record' is not of type jd_DataType_Record.", jd_Error_APIMisuse, jd_Error_Fatal);
     }
     
+    jd_DataNode* n = jd_DataPointGet(record, key);
     jd_RWLockGet(record->lock, jd_RWLock_Write);
     
-    jd_DataNode* n = jd_ArenaAlloc(bank->arena, sizeof(*n));
-    n->key = jd_StringPush(bank->arena, key);
+    b32 exists = (n);
+    
+    if (!exists) {
+        n = jd_ArenaAlloc(bank->arena, sizeof(*n));
+        n->key = jd_StringPush(bank->arena, key);
+    }
+    
     n->value.type = value.type;
     
     switch (value.type) {
@@ -257,11 +335,45 @@ jd_DataNode* jd_DataPointAdd(jd_DataNode* record, jd_String key, jd_Value value)
         
     }
     
-    jd_TreeLinkLastChild(record, n);
+    if (!exists)
+        jd_TreeLinkLastChild(record, n);
     
     jd_RWLockRelease(record->lock, jd_RWLock_Write);
     
     return n;
+}
+
+void jd_DataBankDeleteRecordByID(jd_DataBank* bank, u64 primary_key) {
+    jd_RWLockGet(bank->lock, jd_RWLock_Write);
+    jd_DataNode* record = jd_DataBankGetRecordWithID(bank, primary_key);
+    jd_TreeLinksPop(record);
+    jd_RWLockRelease(bank->lock, jd_RWLock_Write);
+}
+
+jd_DataNode* jd_DataPointGet(jd_DataNode* record, jd_String key) {
+    if (!record) {
+        jd_LogError("No/null record specified.", jd_Error_APIMisuse, jd_Error_Fatal);
+    }
+    
+    if (record->value.type != jd_DataType_Record) {
+        jd_LogError("DataNode is not a record.", jd_Error_APIMisuse, jd_Error_Fatal);
+    }
+    
+    jd_DataNode* out = 0;
+    
+    jd_RWLockGet(record->lock, jd_RWLock_Read);
+    
+    jd_DataNode* n = record->first_child;
+    jd_ForDLLForward(n, n != 0) {
+        if (jd_StringMatch(key, n->key)) {
+            out = n;
+            break;
+        }
+    }
+    
+    jd_RWLockRelease(record->lock, jd_RWLock_Read);
+    
+    return out;
 }
 
 jd_Value jd_DataPointGetValue(jd_DataNode* record, jd_String key) {
@@ -288,6 +400,15 @@ jd_Value jd_DataPointGetValue(jd_DataNode* record, jd_String key) {
     jd_RWLockRelease(record->lock, jd_RWLock_Read);
     
     return v;
+}
+
+u64 jd_DataBankGetRecordPrimaryKey(jd_DataNode* record) {
+    u64 pk = 0;
+    jd_RWLockGet(record->lock, jd_RWLock_Read);
+    if (record->value.type == jd_DataType_Record)
+        pk = record->value.U64;
+    jd_RWLockRelease(record->lock, jd_RWLock_Read);
+    return pk;
 }
 
 jd_Value jd_ValueCastString(jd_String string) {
@@ -425,7 +546,7 @@ f64 jd_ValueF64(jd_Value v) {
 jd_ReadOnly static u32 jd_databank_magic_number = 0x2E6D6150;
 jd_ReadOnly static u64 jd_databank_root_pk = -1;
 
-jd_DataBank* jd_DataBankDeserialize(jd_File file) {
+jd_DataBank* jd_DataBankDeserialize(jd_File file, jd_Arena* arena) {
     typedef enum p_state {
         p_need_type,
         p_need_key_count,
@@ -468,6 +589,7 @@ jd_DataBank* jd_DataBankDeserialize(jd_File file) {
     }
     
     jd_DataBankConfig cfg = {
+        .arena = arena,
         .disabled_types = disabled_types,
         .primary_key_hash_table_slot_count = hash_table_slot_count,
         .primary_key_index = pk_index,
@@ -483,6 +605,9 @@ jd_DataBank* jd_DataBankDeserialize(jd_File file) {
         switch (state) {
             case p_need_type: {
                 read_success = jd_FileReadU32(file, &index, (u32*)&data.value.type);
+                if (data.value.type == 0) {
+                    read_success = false;
+                }
                 state = p_need_key_count;
                 break;
             }
@@ -495,7 +620,9 @@ jd_DataBank* jd_DataBankDeserialize(jd_File file) {
             
             case p_need_key: {
                 read_success = jd_FileReadString(file, &index, data.key_count, &data.key);
-                if (!read_success) return bank;
+                if (!read_success) {
+                    return bank;
+                }
                 state = p_need_parent;
                 break;
             }
@@ -583,7 +710,7 @@ jd_DataBank* jd_DataBankDeserialize(jd_File file) {
                 if (data.value.type == jd_DataType_Record) {
                     jd_DataNode* n = jd_DataBankAddRecordWithPK(p, data.key, data.value.U64);
                 } else {
-                    jd_DataNode* n = jd_DataPointAdd(p, data.key, data.value);
+                    jd_DataNode* n = jd_DataPointSet(p, data.key, data.value);
                 }
                 
                 jd_Platform_MemSet(&data, 0, sizeof(data));
@@ -695,4 +822,600 @@ jd_DFile* jd_DataBankSerialize(jd_DataBank* bank) {
     jd_RWLockRelease(bank->lock, jd_RWLock_Read);
     
     return out;
+}
+
+jd_DataPointFilter* jd_DataPointFilterCreate(jd_Arena* arena, jd_String key) {
+    jd_DataPointFilter* filter = jd_ArenaAlloc(arena, sizeof(*filter));
+    filter->key = jd_StringPush(arena, key);
+    filter->value.type = jd_DataType_Record;
+    filter->rule = jd_FilterRule_Equals;
+    
+    return filter;
+}
+
+#define jd_DataPointFilter_StringBufferSize 4096
+jd_DataPointFilter* jd_DataPointFilterPush(jd_Arena* arena, jd_DataPointFilter* parent, jd_String key, jd_Value value, jd_DataPointFilterRule rule) {
+    jd_DataPointFilter* filter = jd_ArenaAlloc(arena, sizeof(*filter));
+    filter->key = jd_StringPush(arena, key);
+    switch (value.type) {
+        case jd_DataType_None:
+        case jd_DataType_Root:
+        case jd_DataType_Count:
+        case jd_DataType_Bin: {
+            jd_LogError("Supplied value has invalid type for filter.", jd_Error_APIMisuse, jd_Error_Fatal);
+            break;
+        }
+        
+        case jd_DataType_String: {
+            if (value.string.count == 0) return 0;
+            filter->value.type = jd_DataType_String;
+            filter->value.string = jd_StringPush(arena, value.string);
+            break;
+        }
+        
+        default: {
+            filter->value = value;
+            break;
+        }
+        
+    }
+    
+    filter->rule = rule;
+    jd_TreeLinkLastChild(parent, filter);
+    
+    return filter;
+}
+
+b32 jd_DataPointFilterEvaluate(jd_DataPointFilter* f, jd_DataNode* node) {
+    b32 eval = false;
+    
+    typedef struct KeyPair {
+        jd_DataPointFilter* p;
+        jd_DataPointFilter* f;
+    } KeyPair;
+    
+    jd_DArray* keypairs = jd_DArrayCreate(1024, sizeof(KeyPair));
+    jd_DArray* used_nodes = jd_DArrayCreate(1024, sizeof(jd_DataNode));
+    jd_DataNode* n = node;
+    
+    if (!jd_StringMatch(f->key, n->key)) return false;
+    jd_TreeTraversePreorder(f);
+    jd_TreeTraversePreorder(n);
+    
+    while (f != 0) {
+        KeyPair kp = {0};
+        kp.p = f->parent;
+        kp.f = f;
+        
+        jd_DArrayPushBack(keypairs, &kp);
+        
+        jd_TreeTraversePreorder(f);
+    }
+    
+    
+    while (n != 0 && n != node->next) {
+        for (u64 i = 0; i < keypairs->count; i++) {
+            KeyPair* kp = jd_DArrayGetIndex(keypairs, i);
+            if (!n->parent) continue;
+            b32 parent_match = (jd_StringMatch(kp->p->key, n->parent->key) && kp->p->value.type == n->parent->value.type);
+            b32 child_match =  (jd_StringMatch(kp->f->key, n->key) && kp->f->value.type == n->value.type);
+            if (parent_match && child_match) {
+                b32 eval = false;
+                
+                switch (n->value.type) {
+                    case jd_DataType_None:
+                    case jd_DataType_Root: 
+                    case jd_DataType_Count: {
+                        jd_LogError("Node type cannot be used with filter.", jd_Error_APIMisuse, jd_Error_Fatal);
+                        break;
+                    }
+                    
+                    case jd_DataType_Record: {
+                        eval = true;
+                        break;
+                    }
+                    
+                    case jd_DataType_String: {
+                        switch (kp->f->rule) {
+                            case jd_FilterRule_Equals: {
+                                eval = (jd_StringMatch(kp->f->value.string, n->value.string));
+                                break;
+                            }
+                            
+                            case jd_FilterRule_Contains: {
+                                eval = (jd_StrContainsSubstr(n->value.string, kp->f->value.string));
+                                break;
+                            }
+                            
+                            case jd_FilterRule_DoesNotEqual: {
+                                eval = !(jd_StringMatch(kp->f->value.string, n->value.string));
+                                break;
+                            }
+                            
+                            case jd_FilterRule_DoesNotContain: {
+                                eval = !(jd_StrContainsSubstr(n->value.string, kp->f->value.string));
+                                break;
+                            }
+                        }
+                        
+                        break;
+                    }
+                    
+                    case jd_DataType_u64: {
+                        switch (kp->f->rule) {
+                            case jd_FilterRule_GreaterThan: {
+                                eval = (n->value.U64 > kp->f->value.U64);
+                                break;
+                            }
+                            
+                            case jd_FilterRule_LessThan: {
+                                eval = (n->value.U64 < kp->f->value.U64);
+                                break;
+                            }
+                            
+                            case jd_FilterRule_GreaterThanOrEq: {
+                                eval = (n->value.U64 >= kp->f->value.U64);
+                                break;
+                            }
+                            
+                            case jd_FilterRule_LessThanOrEq: {
+                                eval = (n->value.U64 <= kp->f->value.U64);
+                                break;
+                            }
+                            
+                            case jd_FilterRule_Equals: {
+                                eval = (n->value.U64 == kp->f->value.U64);
+                                
+                                break;
+                            }
+                            
+                            case jd_FilterRule_DoesNotEqual: {
+                                eval = (n->value.U64 != kp->f->value.U64);
+                                break;
+                            }
+                        }
+                        
+                        break;
+                    }
+                    
+                    case jd_DataType_u32: {
+                        switch (kp->f->rule) {
+                            case jd_FilterRule_GreaterThan: {
+                                eval = (n->value.U32 > kp->f->value.U32);
+                                break;
+                            }
+                            
+                            case jd_FilterRule_LessThan: {
+                                eval = (n->value.U32 < kp->f->value.U32);
+                                break;
+                            }
+                            
+                            case jd_FilterRule_GreaterThanOrEq: {
+                                eval = (n->value.U32 >= kp->f->value.U32);
+                                break;
+                            }
+                            
+                            case jd_FilterRule_LessThanOrEq: {
+                                eval = (n->value.U32 <= kp->f->value.U32);
+                                break;
+                            }
+                            
+                            case jd_FilterRule_Equals: {
+                                eval = (n->value.U32 == kp->f->value.U32);
+                                
+                                break;
+                            }
+                            
+                            case jd_FilterRule_DoesNotEqual: {
+                                eval = (n->value.U32 != kp->f->value.U32);
+                                break;
+                            }
+                        }
+                        
+                        break;
+                    }
+                    
+                    case jd_DataType_b32: {
+                        switch (kp->f->rule) {
+                            case jd_FilterRule_Equals: {
+                                eval = (n->value.B32 == kp->f->value.B32);
+                                break;
+                            }
+                            
+                            case jd_FilterRule_DoesNotEqual: {
+                                eval = (n->value.B32 != kp->f->value.B32);
+                                break;
+                            }
+                        }
+                        
+                        break;
+                    }
+                    
+                    case jd_DataType_c8: {
+                        switch (kp->f->rule) {
+                            case jd_FilterRule_GreaterThan: {
+                                eval = (n->value.C8 > kp->f->value.C8);
+                                break;
+                            }
+                            
+                            case jd_FilterRule_LessThan: {
+                                eval = (n->value.C8 < kp->f->value.C8);
+                                break;
+                            }
+                            
+                            case jd_FilterRule_GreaterThanOrEq: {
+                                eval = (n->value.C8 >= kp->f->value.C8);
+                                break;
+                            }
+                            
+                            case jd_FilterRule_LessThanOrEq: {
+                                eval = (n->value.C8 <= kp->f->value.C8);
+                                break;
+                            }
+                            
+                            case jd_FilterRule_Equals: {
+                                eval = (n->value.C8 == kp->f->value.C8);
+                                
+                                break;
+                            }
+                            
+                            case jd_FilterRule_DoesNotEqual: {
+                                eval = (n->value.C8 != kp->f->value.C8);
+                                break;
+                            }
+                        }
+                        
+                        break;
+                    }
+                    
+                    case jd_DataType_i64: {
+                        switch (kp->f->rule) {
+                            case jd_FilterRule_GreaterThan: {
+                                eval = (n->value.I64 > kp->f->value.I64);
+                                break;
+                            }
+                            
+                            case jd_FilterRule_LessThan: {
+                                eval = (n->value.I64 < kp->f->value.I64);
+                                break;
+                            }
+                            
+                            case jd_FilterRule_GreaterThanOrEq: {
+                                eval = (n->value.I64 >= kp->f->value.I64);
+                                break;
+                            }
+                            
+                            case jd_FilterRule_LessThanOrEq: {
+                                eval = (n->value.I64 <= kp->f->value.I64);
+                                break;
+                            }
+                            
+                            case jd_FilterRule_Equals: {
+                                eval = (n->value.I64 == kp->f->value.I64);
+                                
+                                break;
+                            }
+                            
+                            case jd_FilterRule_DoesNotEqual: {
+                                eval = (n->value.I64 != kp->f->value.I64);
+                                break;
+                            }
+                        }
+                        
+                        break;
+                    } 
+                    
+                    case jd_DataType_i32: {
+                        switch (kp->f->rule) {
+                            case jd_FilterRule_GreaterThan: {
+                                eval = (n->value.I32 > kp->f->value.I32);
+                                break;
+                            }
+                            
+                            case jd_FilterRule_LessThan: {
+                                eval = (n->value.I32 < kp->f->value.I32);
+                                break;
+                            }
+                            
+                            case jd_FilterRule_GreaterThanOrEq: {
+                                eval = (n->value.I32 >= kp->f->value.I32);
+                                break;
+                            }
+                            
+                            case jd_FilterRule_LessThanOrEq: {
+                                eval = (n->value.I32 <= kp->f->value.I32);
+                                break;
+                            }
+                            
+                            case jd_FilterRule_Equals: {
+                                eval = (n->value.I32 == kp->f->value.I32);
+                                
+                                break;
+                            }
+                            
+                            case jd_FilterRule_DoesNotEqual: {
+                                eval = (n->value.I32 != kp->f->value.I32);
+                                break;
+                            }
+                        }
+                        
+                        break;
+                    }
+                    
+                    case jd_DataType_f32: {
+                        switch (kp->f->rule) {
+                            case jd_FilterRule_GreaterThan: {
+                                eval = (n->value.F32 > kp->f->value.F32);
+                                break;
+                            }
+                            
+                            case jd_FilterRule_LessThan: {
+                                eval = (n->value.F32 < kp->f->value.F32);
+                                break;
+                            }
+                            
+                            case jd_FilterRule_GreaterThanOrEq: {
+                                eval = (n->value.F32 >= kp->f->value.F32);
+                                break;
+                            }
+                            
+                            case jd_FilterRule_LessThanOrEq: {
+                                eval = (n->value.F32 <= kp->f->value.F32);
+                                break;
+                            }
+                            
+                            case jd_FilterRule_Equals: {
+                                eval = (n->value.F32 == kp->f->value.F32);
+                                
+                                break;
+                            }
+                            
+                            case jd_FilterRule_DoesNotEqual: {
+                                eval = (n->value.F32 != kp->f->value.F32);
+                                break;
+                            }
+                        }
+                        
+                        break;
+                    }
+                    
+                    case jd_DataType_f64: {
+                        switch (kp->f->rule) {
+                            case jd_FilterRule_GreaterThan: {
+                                eval = (n->value.F64 > kp->f->value.F64);
+                                break;
+                            }
+                            
+                            case jd_FilterRule_LessThan: {
+                                eval = (n->value.F64 < kp->f->value.F64);
+                                break;
+                            }
+                            
+                            case jd_FilterRule_GreaterThanOrEq: {
+                                eval = (n->value.F64 >= kp->f->value.F64);
+                                break;
+                            }
+                            
+                            case jd_FilterRule_LessThanOrEq: {
+                                eval = (n->value.F64 <= kp->f->value.F64);
+                                break;
+                            }
+                            
+                            case jd_FilterRule_Equals: {
+                                eval = (n->value.F64 == kp->f->value.F64);
+                                
+                                break;
+                            }
+                            
+                            case jd_FilterRule_DoesNotEqual: {
+                                eval = (n->value.F64 != kp->f->value.F64);
+                                break;
+                            }
+                        }
+                        
+                        break;
+                    }
+                }
+                
+                for (u64 i = 0; i < used_nodes->count; i++) {
+                    jd_DataNode* used = jd_DArrayGetIndex(used_nodes, i);
+                    if (n == used) {
+                        eval = false;
+                    }
+                }
+                
+                if (eval) {
+                    jd_DArrayPopIndex(keypairs, i);
+                    jd_DArrayPushBack(used_nodes, n);
+                }
+                break;
+            }
+            
+        }
+        
+        jd_TreeTraversePreorder(n);
+        
+    }
+    
+    b32 ret = (keypairs->count == 0);
+    jd_DArrayRelease(keypairs);
+    return ret;
+}
+
+static i32 jd_DataBank_Internal_QSortAsc(void* context, const void* a, const void* b) {
+    jd_DataNode** pa = (jd_DataNode**)a;
+    jd_DataNode** pb = (jd_DataNode**)b;
+    
+    if (!a || !b) return 0;
+    if ((*pa)->value.type != jd_DataType_Record ||
+        (*pa)->value.type != jd_DataType_Record) return 0;
+    
+    jd_String* match = (jd_String*)context;
+    jd_Value va = jd_DataPointGetValue(*pa, *match);
+    jd_Value vb = jd_DataPointGetValue(*pb, *match);
+    
+    if (va.type != vb.type) return 0;
+    
+    switch (va.type) {
+        case jd_DataType_String: {
+            i32 result = 0;
+            for (u64 i = 0; i < jd_Min(va.string.count, vb.string.count); i++) {
+                result = va.string.mem[i] - vb.string.mem[i];
+                if (result != 0) break;
+            }
+            return result;
+        }
+        
+        case jd_DataType_u64: {
+            return va.U64 - vb.U64;
+        }
+        
+        case jd_DataType_u32: {
+            return va.U32 - vb.U32;
+        }
+        
+        case jd_DataType_b32: {
+            return va.B32 - vb.B32;
+        }
+        
+        case jd_DataType_c8: {
+            return va.C8 - vb.C8;
+        }
+        
+        case jd_DataType_i64: {
+            return va.I64 - vb.I64;
+        } 
+        
+        case jd_DataType_i32: {
+            return va.I32 - vb.I32;
+        }
+        
+        case jd_DataType_f32: {
+            return va.F32 - vb.F32;
+        }
+        
+        case jd_DataType_f64: {
+            return va.F64 - vb.F64;
+        }
+    }
+    return 0;
+}
+
+static i32 jd_DataBank_Internal_QSortDesc(void* context, const void* a, const void* b) {
+    jd_DataNode** pa = (jd_DataNode**)a;
+    jd_DataNode** pb = (jd_DataNode**)b;
+    
+    if (!a || !b) return 0;
+    if ((*pa)->value.type != jd_DataType_Record ||
+        (*pa)->value.type != jd_DataType_Record) return 0;
+    
+    jd_String* match = (jd_String*)context;
+    jd_Value va = jd_DataPointGetValue(*pa, *match);
+    jd_Value vb = jd_DataPointGetValue(*pb, *match);
+    
+    if (va.type != vb.type) return 0;
+    
+    switch (va.type) {
+        case jd_DataType_String: {
+            i32 result = 0;
+            for (u64 i = 0; i < jd_Min(va.string.count, vb.string.count); i++) {
+                result = vb.string.mem[i] - va.string.mem[i];
+                if (result != 0) break;
+            }
+            return result;
+        }
+        
+        case jd_DataType_u64: {
+            return vb.U64 - va.U64;
+        }
+        
+        case jd_DataType_u32: {
+            return vb.U32 - va.U32;
+        }
+        
+        case jd_DataType_b32: {
+            return vb.B32 - va.B32;
+        }
+        
+        case jd_DataType_c8: {
+            return vb.C8 - va.C8;
+        }
+        
+        case jd_DataType_i64: {
+            return vb.I64 - va.I64;
+        } 
+        
+        case jd_DataType_i32: {
+            return vb.I32 - va.I32;
+        }
+        
+        case jd_DataType_f32: {
+            return vb.F32 - va.F32;
+        }
+        
+        case jd_DataType_f64: {
+            return vb.F64 - va.F64;
+        }
+    }
+    
+    return 0;
+}
+
+void jd_DataBankSortRecordGeneration(jd_DataNode* first_child, jd_String sort_on_key, jd_DataPointSortRule rule) {
+    if (!first_child) {
+        jd_LogError("Invalid node provided.", jd_Error_APIMisuse, jd_Error_Critical);
+        return;
+    }
+    jd_DataNode* p = first_child->parent;
+    if (!p) {
+        jd_LogError("Invalid node provided.", jd_Error_APIMisuse, jd_Error_Critical);
+    }
+    
+    jd_RWLockGet(p->lock, jd_RWLock_Write);
+    
+    jd_DArray* sort_array = jd_DArrayCreate(2048, sizeof(jd_DataNode*));
+    jd_DArray* others     = jd_DArrayCreate(2048, sizeof(jd_DataNode*));
+    jd_String first_key = first_child->key;
+    jd_DataType type = first_child->value.type;
+    
+    jd_DataNode* first_other = 0;
+    jd_DataNode* last_other = 0;
+    
+    jd_DataNode* n = p->first_child;
+    while (n != 0) {
+        if (jd_StringMatch(n->key, first_key) && type == n->value.type) {
+            jd_DArrayPushBack(sort_array, &n);
+        } else {
+            jd_DArrayPushBack(others, &n);
+        }
+        
+        n = n->next;
+    }
+    
+    switch (rule) {
+        case jd_SortRule_Ascending: {
+            qsort_s(sort_array->view.mem, sort_array->count, sizeof(jd_DataNode*), jd_DataBank_Internal_QSortAsc, &sort_on_key);
+            break;
+        }
+        
+        case jd_SortRule_Descending: {
+            qsort_s(sort_array->view.mem, sort_array->count, sizeof(jd_DataNode*), jd_DataBank_Internal_QSortDesc, &sort_on_key);
+            break;
+        }
+    }
+    
+    p->first_child = 0;
+    p->last_child  = 0;
+    
+    for (u64 i = 0; i < sort_array->count; i++) {
+        jd_DataNode* node = jd_DArrayGetIndex(sort_array, i);
+        jd_TreeLinkLastChild(p, node);
+    }
+    
+    for (u64 i = 0; i < others->count; i++) {
+        jd_DataNode* node = jd_DArrayGetIndex(others, i);
+        jd_TreeLinkLastChild(p, node);
+    }
+    
+    jd_RWLockRelease(p->lock, jd_RWLock_Write);
 }
