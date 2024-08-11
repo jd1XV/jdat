@@ -267,9 +267,11 @@ typedef enum jd_DataPointSortRule {
     jd_SortRule_Count
 } jd_DataPointSortRule;
 
+void jd_DataBankSortRecordGeneration(jd_DataNode* first_child, jd_String sort_on_key, jd_DataPointSortRule rule);
+
 jd_DataPointFilter* jd_DataPointFilterCreate(jd_Arena* arena, jd_String key);
 jd_DataPointFilter* jd_DataPointFilterPush(jd_Arena* arena, jd_DataPointFilter* parent, jd_String key, jd_Value value, jd_DataPointFilterRule rule);
-b32 jd_DataPointFilterEvaluate(jd_DataPointFilter* filter, jd_DataNode* n);
+b32 jd_DataPointFilterEvaluate(jd_DataPointFilter* filter, jd_DataNode* n, b32 case_sensitive);
 
 jd_DataBank*  jd_DataBankCreate(jd_DataBankConfig* config);
 jd_DFile*     jd_DataBankSerialize(jd_DataBank* bank);

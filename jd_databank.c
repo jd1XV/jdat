@@ -866,7 +866,7 @@ jd_DataPointFilter* jd_DataPointFilterPush(jd_Arena* arena, jd_DataPointFilter* 
     return filter;
 }
 
-b32 jd_DataPointFilterEvaluate(jd_DataPointFilter* f, jd_DataNode* node) {
+b32 jd_DataPointFilterEvaluate(jd_DataPointFilter* f, jd_DataNode* node, b32 case_sensitive) {
     b32 eval = false;
     
     typedef struct KeyPair {
@@ -923,7 +923,11 @@ b32 jd_DataPointFilterEvaluate(jd_DataPointFilter* f, jd_DataNode* node) {
                             }
                             
                             case jd_FilterRule_Contains: {
-                                eval = (jd_StrContainsSubstr(n->value.string, kp->f->value.string));
+                                if (case_sensitive)
+                                    eval = (jd_StrContainsSubstr(n->value.string, kp->f->value.string));
+                                else
+                                    eval = (jd_StrContainsSubstrCaseInsensitive(n->value.string, kp->f->value.string));
+                                
                                 break;
                             }
                             
@@ -933,7 +937,11 @@ b32 jd_DataPointFilterEvaluate(jd_DataPointFilter* f, jd_DataNode* node) {
                             }
                             
                             case jd_FilterRule_DoesNotContain: {
-                                eval = !(jd_StrContainsSubstr(n->value.string, kp->f->value.string));
+                                if (case_sensitive)
+                                    eval = !(jd_StrContainsSubstr(n->value.string, kp->f->value.string));
+                                else
+                                    eval = !(jd_StrContainsSubstrCaseInsensitive(n->value.string, kp->f->value.string));
+                                
                                 break;
                             }
                         }
@@ -1239,6 +1247,7 @@ b32 jd_DataPointFilterEvaluate(jd_DataPointFilter* f, jd_DataNode* node) {
     
     b32 ret = (keypairs->count == 0);
     jd_DArrayRelease(keypairs);
+    jd_DArrayRelease(used_nodes);
     return ret;
 }
 
@@ -1254,6 +1263,9 @@ static i32 jd_DataBank_Internal_QSortAsc(void* context, const void* a, const voi
     jd_Value va = jd_DataPointGetValue(*pa, *match);
     jd_Value vb = jd_DataPointGetValue(*pb, *match);
     
+    if (va.type == jd_DataType_None) return -1;
+    if (vb.type == jd_DataType_None) return  1;
+    
     if (va.type != vb.type) return 0;
     
     switch (va.type) {
@@ -1263,6 +1275,8 @@ static i32 jd_DataBank_Internal_QSortAsc(void* context, const void* a, const voi
                 result = va.string.mem[i] - vb.string.mem[i];
                 if (result != 0) break;
             }
+            if (result == 0)
+                result = (va.string.count - vb.string.count);
             return result;
         }
         
@@ -1313,6 +1327,8 @@ static i32 jd_DataBank_Internal_QSortDesc(void* context, const void* a, const vo
     jd_Value va = jd_DataPointGetValue(*pa, *match);
     jd_Value vb = jd_DataPointGetValue(*pb, *match);
     
+    if (va.type == jd_DataType_None) return  1;
+    if (vb.type == jd_DataType_None) return -1;
     if (va.type != vb.type) return 0;
     
     switch (va.type) {
@@ -1322,6 +1338,8 @@ static i32 jd_DataBank_Internal_QSortDesc(void* context, const void* a, const vo
                 result = vb.string.mem[i] - va.string.mem[i];
                 if (result != 0) break;
             }
+            if (result == 0)
+                result = (vb.string.count - va.string.count);
             return result;
         }
         
@@ -1408,14 +1426,19 @@ void jd_DataBankSortRecordGeneration(jd_DataNode* first_child, jd_String sort_on
     p->last_child  = 0;
     
     for (u64 i = 0; i < sort_array->count; i++) {
-        jd_DataNode* node = jd_DArrayGetIndex(sort_array, i);
+        jd_DataNode** nodep = jd_DArrayGetIndex(sort_array, i);
+        jd_DataNode* node = *nodep;
         jd_TreeLinkLastChild(p, node);
     }
     
     for (u64 i = 0; i < others->count; i++) {
-        jd_DataNode* node = jd_DArrayGetIndex(others, i);
+        jd_DataNode** nodep = jd_DArrayGetIndex(others, i);
+        jd_DataNode* node = *nodep;
         jd_TreeLinkLastChild(p, node);
     }
+    
+    jd_DArrayRelease(sort_array);
+    jd_DArrayRelease(others);
     
     jd_RWLockRelease(p->lock, jd_RWLock_Write);
 }
